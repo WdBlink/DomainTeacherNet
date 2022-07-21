@@ -4,6 +4,7 @@ from utils import util
 import torch
 import models
 import data
+from detectron2.engine import default_argument_parser
 
 
 class BaseOptions():
@@ -20,8 +21,9 @@ class BaseOptions():
     def initialize(self, parser):
         """Define the common options that are used in both training and test."""
         # basic parameters
-        parser.add_argument('--dataroot', required=True, help='path to images (should have subfolders trainA, trainB, valA, valB, etc)')
-        parser.add_argument('--name', type=str, default='experiment_name', help='name of the experiment. It decides where to store samples and models')
+        parser = default_argument_parser()
+        parser.add_argument('--dataroot', default="/mnt/e/datasets/test_tif/aerial2satllite", help='path to images (should have subfolders trainA, trainB, valA, valB, etc)')
+        parser.add_argument('--name', type=str, default='aerial2satllite', help='name of the experiment. It decides where to store samples and models')
         parser.add_argument('--use_wandb', action='store_true', help='use wandb')
         parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
         parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
@@ -42,7 +44,7 @@ class BaseOptions():
         parser.add_argument('--dataset_mode', type=str, default='unaligned', help='chooses how datasets are loaded. [unaligned | aligned | single | colorization]')
         parser.add_argument('--direction', type=str, default='AtoB', help='AtoB or BtoA')
         parser.add_argument('--serial_batches', action='store_true', help='if true, takes images in order to make batches, otherwise takes them randomly')
-        parser.add_argument('--num_threads', default=4, type=int, help='# threads for loading data')
+        parser.add_argument('--num_threads', default=2, type=int, help='# threads for loading data')
         parser.add_argument('--batch_size', type=int, default=1, help='input batch size')
         parser.add_argument('--load_size', type=int, default=256, help='scale images to this size')
         parser.add_argument('--crop_size', type=int, default=240, help='then crop to this size')
