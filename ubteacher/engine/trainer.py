@@ -3,6 +3,7 @@ import os
 import time
 import logging
 import torch
+import cv2
 from torch.nn.parallel import DistributedDataParallel
 from fvcore.nn.precise_bn import get_bn_modules
 import numpy as np
@@ -20,6 +21,7 @@ from detectron2.structures.boxes import Boxes
 from detectron2.structures.instances import Instances
 from detectron2.utils.env import TORCH_VERSION
 from detectron2.data import MetadataCatalog
+from detectron2.utils.visualizer import Visualizer
 
 from ubteacher.data.build import (
     build_detection_semisup_train_loader,
@@ -31,6 +33,7 @@ from ubteacher.engine.hooks import LossEvalHook
 from ubteacher.modeling.meta_arch.ts_ensemble import EnsembleTSModel
 from ubteacher.checkpoint.detection_checkpoint import DetectionTSCheckpointer
 from ubteacher.solver.build import build_lr_scheduler
+
 
 
 # Supervised-only Trainer
@@ -743,6 +746,9 @@ class DomainTeacherTrainer(DefaultTrainer):
         self.visualizer = Visualizer(self.opt)  # create a visualizer that display/save images and plots
         self.gan_total_iters = 0  # the total number of training iterations
         self.epoch_iter = 0
+        self.epoch_start_time = time.time()
+        self.iter_data_time = time.time()
+        self.epoch = 0
 
         # =====================================================
         # ================== UBteacher model setting ==========
@@ -951,13 +957,28 @@ class DomainTeacherTrainer(DefaultTrainer):
         label_data_q, label_data_k, unlabel_data_q, unlabel_data_k = data
         data_time = time.perf_counter() - start
 
+        # visualize the pseudo image
+        # if self.gan_total_iters % self.gan_dataset_size == 0:
+        #     im = label_data_q[0]['image'].cpu().detach().numpy()
+        #     metadata = MetadataCatalog.get(self.cfg.DATASETS.TRAIN[0])
+        #     v = Visualizer(img_rgb=im, metadata=metadata)
+        #     v = v.draw_instance_predictions(label_data_q[0]['instances'].to('cpu'))
+        #     img = v.get_image()[:, :, ::-1]
+        #
+        #
+        #     path = os.path.join(self.cfg.OUTPUT_DIR, f'{self.epoch}.tif')
+        #     print(f'Save image to {path}')
+        #     try:
+        #         cv2.imwrite(path, img)
+        #     except Exception as err:
+        #         print(err)
+
         # remove unlabeled data labels
         unlabel_data_q = self.remove_label(unlabel_data_q)
         unlabel_data_k = self.remove_label(unlabel_data_k)
 
         # burn-in stage (supervised training with labeled data)
         if self.iter < self.cfg.SEMISUPNET.BURN_UP_STEP:
-
             # input both strong and weak supervised data into model
             label_data_q.extend(label_data_k)
             record_dict, _, _, _ = self.model(
@@ -982,19 +1003,23 @@ class DomainTeacherTrainer(DefaultTrainer):
                     keep_rate=self.cfg.SEMISUPNET.EMA_KEEP_RATE)
 
             # train cycle-gan model
-            # for epoch in range(self.opt.epoch_count,
-            #                    self.opt.n_epochs + self.opt.n_epochs_decay + 1):  # outer loop for different epochs; we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>
+
             if self.gan_total_iters % self.gan_dataset_size == 0:
-                epoch_start_time = time.time()  # timer for entire epoch
-                iter_data_time = time.time()  # timer for data loading per iteration
+                self.epoch_start_time = time.time()  # timer for entire epoch
                 self.epoch_iter = 0  # the number of training iterations in current epoch, reset to 0 every epoch
                 self.visualizer.reset()  # reset the visualizer: make sure it saves the results to HTML at least once every epoch
                 self.model_gan.update_learning_rate()  # update learning rates in the beginning of every epoch.
+                self.epoch += 1
+                print('End of epoch %d / %d \t Time Taken: %d sec' % (
+                    self.epoch, self.opt.n_epochs + self.opt.n_epochs_decay, time.time() - self.epoch_start_time))
+
+                if self.epoch % self.opt.save_epoch_freq == 0:  # cache our model every <save_epoch_freq> epochs
+                    print('saving the model at the end of epoch %d, iters %d' % (self.epoch, self.gan_total_iters))
+                    self.model_gan.save_networks('latest')
+                    self.model_gan.save_networks(self.epoch)
 
             gan_data = next(iter(self.gan_dataset))
             iter_start_time = time.time()  # timer for computation per iteration
-            if self.gan_total_iters % self.opt.print_freq == 0:
-                t_data = iter_start_time - iter_data_time
 
             self.gan_total_iters += self.opt.batch_size
             self.epoch_iter += self.opt.batch_size
@@ -1004,29 +1029,21 @@ class DomainTeacherTrainer(DefaultTrainer):
             if self.gan_total_iters % self.opt.display_freq == 0:  # display images on visdom and save images to a HTML file
                 save_result = self.gan_total_iters % self.opt.update_html_freq == 0
                 self.model_gan.compute_visuals()
-                self.visualizer.display_current_results(self.model_gan.get_current_visuals(), self.iter,
+                self.visualizer.display_current_results(self.model_gan.get_current_visuals(), self.epoch,
                                                         save_result)
 
             if self.gan_total_iters % self.opt.print_freq == 0:  # print training losses and save logging information to the disk
                 losses = self.model_gan.get_current_losses()
                 t_comp = (time.time() - iter_start_time) / self.opt.batch_size
-                self.visualizer.print_current_losses(self.iter, self.epoch_iter, losses, t_comp, t_data)
+                self.visualizer.print_current_losses(self.epoch, self.epoch_iter, losses, t_comp, data_time)
                 if self.opt.display_id > 0:
-                    self.visualizer.plot_current_losses(self.iter, float(self.epoch_iter) / self.gan_dataset_size,
+                    self.visualizer.plot_current_losses(self.epoch, float(self.epoch_iter) / self.gan_dataset_size,
                                                         losses)
 
             if self.gan_total_iters % self.opt.save_latest_freq == 0:  # cache our latest model every <save_latest_freq> iterations
-                print('saving the latest model (epoch %d, total_iters %d)' % (self.iter, self.gan_total_iters))
+                print('saving the latest model (epoch %d, total_iters %d)' % (self.epoch, self.gan_total_iters))
                 save_suffix = 'iter_%d' % self.gan_total_iters if self.opt.save_by_iter else 'latest'
                 self.model_gan.save_networks(save_suffix)
-
-            if self.iter % self.opt.save_epoch_freq == 0:  # cache our model every <save_epoch_freq> epochs
-                print('saving the model at the end of epoch %d, iters %d' % (self.iter, self.gan_total_iters))
-                self.model_gan.save_networks('latest')
-                self.model_gan.save_networks(self.iter)
-
-            print('End of epoch %d / %d \t Time Taken: %d sec' % (
-                self.iter, self.opt.n_epochs + self.opt.n_epochs_decay, time.time() - epoch_start_time))
 
 
             record_dict = {}
@@ -1041,9 +1058,9 @@ class DomainTeacherTrainer(DefaultTrainer):
                     _,
                 ) = self.model_teacher(unlabel_data_k, branch="unsup_data_weak")
                 for i, t in enumerate(unlabel_data_k):
-                    input = torch.unsqueeze(t["image"], 0)
+                    input = torch.unsqueeze(t["image"], 0).float()
                     output = self.model_gan.output_fake_B(input)
-                    unlabel_data_q[i]["image"] = output
+                    unlabel_data_q[i]["image"] = torch.squeeze(output, 0)
                 # unlabel_data_q = self.model_gan.output_fake_B(unlabel_data_k)
 
             #  Pseudo-labeling
@@ -1075,6 +1092,9 @@ class DomainTeacherTrainer(DefaultTrainer):
 
             all_label_data = label_data_q + label_data_k
             all_unlabel_data = unlabel_data_q
+
+
+
 
             record_all_label_data, _, _, _ = self.model(
                 all_label_data, branch="supervised"

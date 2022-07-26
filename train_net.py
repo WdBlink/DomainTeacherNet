@@ -15,6 +15,7 @@ from ubteacher.modeling.meta_arch.rcnn import TwoStagePseudoLabGeneralizedRCNN
 from ubteacher.modeling.proposal_generator.rpn import PseudoLabRPN
 from ubteacher.modeling.roi_heads.roi_heads import StandardROIHeadsPseudoLab
 import ubteacher.data.datasets.builtin
+from detectron2.data import DatasetCatalog, MetadataCatalog
 
 from ubteacher.modeling.meta_arch.ts_ensemble import EnsembleTSModel
 import os
@@ -43,6 +44,9 @@ def main(args):
                         class_names='1')
     register_pascal_voc("destroyed_building_test_tif", "/mnt/e/Dataset/taining_data_2021-08-19", "test", year=2014,
                         class_names='1')
+    MetadataCatalog.get("destroyed_building_test_tif").set(thing_classes=["1"],  # 可以选择开启，但是不能显示中文，这里需要注意，中文的话最好关闭
+                                           evaluator_type='coco')
+
     if cfg.SEMISUPNET.Trainer == "ubteacher":
         Trainer = UBTeacherTrainer
         trainer = Trainer(cfg)
