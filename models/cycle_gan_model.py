@@ -116,8 +116,8 @@ class CycleGANModel(BaseModel):
         self.fake_A = self.netG_B(self.real_B)  # G_B(B)
         self.rec_B = self.netG_A(self.fake_A)   # G_A(G_B(B))
 
-    def output_fake_B(self, input):
-        return self.netG_A(input)
+    def output_fake_B(self, x):
+        return self.netG_A(x)
 
     def backward_D_basic(self, netD, real, fake):
         """Calculate GAN loss for the discriminator

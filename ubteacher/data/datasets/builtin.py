@@ -13,33 +13,28 @@ from detectron2.structures import BoxMode
 import numpy as np
 import xml.etree.ElementTree as ET
 from typing import List, Tuple, Union
+from pathlib import Path
+import glob
+import cv2
 
 logger = logging.getLogger(__name__)
+IMG_FORMATS = ['bmp', 'jpg', 'jpeg', 'png', 'tif', 'tiff', 'dng', 'webp', 'mpo']  # acceptable image suffixes
 
 JSON_ANNOTATIONS_DIR = ""
-_SPLITS_COCO_FORMAT = {}
-_SPLITS_COCO_FORMAT["coco"] = {
-    "coco_2017_unlabel": (
-        "coco/unlabeled2017",
-        "coco/annotations/image_info_unlabeled2017.json",
-    ),
-    "coco_2017_for_voc20": (
-        "coco",
-        "coco/annotations/google/instances_unlabeledtrainval20class.json",
-    ),
-}
+_SPLITS_COCO_FORMAT = [
+    ("destroy_201005069_unlable", "/test_tif/201005069"),
+    ("destroy_0013_unlable", "/test_tif/0013")
+]
 
 
-def register_coco_unlabel(root):
-    for _, splits_per_dataset in _SPLITS_COCO_FORMAT.items():
-        for key, (image_root, json_file) in splits_per_dataset.items():
-            meta = {}
-            register_coco_unlabel_instances(
-                key, meta, os.path.join(root, json_file), os.path.join(root, image_root)
-            )
+def register_destroy_unlabel(root):
+    for key, dataset_name in _SPLITS_COCO_FORMAT:
+        meta = {}
+        image_root = root + dataset_name
+        register_destroy_unlabel_instances(key, meta, image_root)
 
 
-def register_coco_unlabel_instances(name, metadata, json_file, image_root):
+def register_destroy_unlabel_instances(name, metadata, image_root):
     """
     Register a dataset in COCO's json annotation format for
     instance detection, instance segmentation and keypoint detection.
@@ -57,52 +52,43 @@ def register_coco_unlabel_instances(name, metadata, json_file, image_root):
         image_root (str or path-like): directory which contains all the images.
     """
     assert isinstance(name, str), name
-    assert isinstance(json_file, (str, os.PathLike)), json_file
     assert isinstance(image_root, (str, os.PathLike)), image_root
 
     # 1. register a function which returns dicts
     DatasetCatalog.register(
-        name, lambda: load_coco_unlabel_json(json_file, image_root, name)
+        name, lambda: load_destroy_unlabel_file(image_root)
     )
 
     # 2. Optionally, add metadata about this dataset,
     # since they might be useful in evaluation, visualization or logging
     MetadataCatalog.get(name).set(
-        json_file=json_file, image_root=image_root, evaluator_type="coco", **metadata
+        image_root=image_root, evaluator_type="destroy_voc", **metadata
     )
 
 
-def load_coco_unlabel_json(
-    json_file, image_root, dataset_name=None, extra_annotation_keys=None
-):
-    from pycocotools.coco import COCO
+def load_destroy_unlabel_file(image_root):
+    p = str(Path(image_root).absolute())
+    if '*' in p:
+        files = sorted(glob.glob(p, recursive=True))  # glob
+    elif os.path.isdir(p):
+        files = sorted(glob.glob(os.path.join(p, '*.*')))  # dir
+    elif os.path.isfile(p):
+        files = [p]  # files
+    else:
+        raise Exception(f'ERROR: {p} does not exist')
 
-    timer = Timer()
-    json_file = PathManager.get_local_path(json_file)
-    with contextlib.redirect_stdout(io.StringIO()):
-        coco_api = COCO(json_file)
-    if timer.seconds() > 1:
-        logger.info(
-            "Loading {} takes {:.2f} seconds.".format(json_file, timer.seconds())
-        )
-
-    id_map = None
-    # sort indices for reproducible results
-    img_ids = sorted(coco_api.imgs.keys())
-
-    imgs = coco_api.loadImgs(img_ids)
-
-    logger.info("Loaded {} images in COCO format from {}".format(len(imgs), json_file))
-
+    images = [x for x in files if x.split('.')[-1].lower() in IMG_FORMATS]
     dataset_dicts = []
-
-    for img_dict in imgs:
+    for path in images:
+        img_id = os.path.splitext(os.path.split(path)[1])[0]
+        file_name = os.path.split(path)[1]
+        img = cv2.imread(path)
+        height, width = img.shape[:2]
         record = {}
-        record["file_name"] = os.path.join(image_root, img_dict["file_name"])
-        record["height"] = img_dict["height"]
-        record["width"] = img_dict["width"]
-        image_id = record["image_id"] = img_dict["id"]
-
+        record["file_name"] = path
+        record["height"] = height
+        record["width"] = width
+        record["image_id"] = img_id
         dataset_dicts.append(record)
 
     return dataset_dicts
@@ -155,7 +141,7 @@ def register_all_destroy_voc(root):
     ]
     for name, dirname, split in SPLITS:
         register_pascal_voc(name, os.path.join(root, dirname), split)
-        MetadataCatalog.get(name).evaluator_type = "pascal_voc"
+        MetadataCatalog.get(name).set(evaluator_type='destroy_voc')
 
 def load_voc_instances(dirname: str, split: str, class_names: Union[List[str], Tuple[str, ...]]):
     """
@@ -211,14 +197,16 @@ def load_voc_instances(dirname: str, split: str, class_names: Union[List[str], T
 
 
 def register_pascal_voc(name, dirname, split, class_names=CLASS_NAMES):
+    year = 2007 if "2007" in name else 2012
     DatasetCatalog.register(name, lambda: load_voc_instances(dirname, split, class_names))
     MetadataCatalog.get(name).set(
-        thing_classes=list(class_names), dirname=dirname, split=split
+        thing_classes=list(class_names), dirname=dirname, split=split, year=year
     )
 
-os.environ["DETECTRON2_DATASETS"] = "/mnt/e/Datasets/"
+
+os.environ["DETECTRON2_DATASETS"] = "/mnt/c/Dataset/"
 _root = os.getenv("DETECTRON2_DATASETS", "datasets")
-root = os.path.join('/mnt/e/Dataset/')
-register_coco_unlabel(_root)
-register_all_cityscapes(_root)
-register_all_destroy_voc(root)
+# register_all_cityscapes(_root)
+register_all_destroy_voc(_root)
+register_destroy_unlabel(_root)
+

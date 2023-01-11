@@ -2,6 +2,8 @@ _BASE_: "../Base-RCNN-FPN.yaml"
 MODEL:
   META_ARCHITECTURE: "TwoStagePseudoLabGeneralizedRCNN"
   WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+#  MODEL.WEIGHTS
+#  C:\unbiased-teacher\output\model_0179999.pth
   MASK_ON: False
   RESNETS:
     DEPTH: 50
@@ -15,30 +17,35 @@ MODEL:
     LOSS: "FocalLoss"
     NUM_CLASSES: 1
 INPUT:
-  MIN_SIZE_TRAIN: (480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800)
-  MIN_SIZE_TEST: 600
+  MIN_SIZE_TRAIN: (800, 1000)
+  MIN_SIZE_TEST: 800
+  MAX_SIZE_TEST: 1000
+  FORMAT: RGB
 SOLVER:
   LR_SCHEDULER_NAME: "WarmupMultiStepLR"
   STEPS: (179990, 179995)
   MAX_ITER: 180000
-  IMG_PER_BATCH_LABEL: 8
-  IMG_PER_BATCH_UNLABEL: 8
+  IMG_PER_BATCH_LABEL: 4
+  IMG_PER_BATCH_UNLABEL: 4
+  PESUDO_LABEL_PER_BATCH: 50
   BASE_LR: 0.001
+  CHECKPOINT_PERIOD: 3000
 DATALOADER:
   SUP_PERCENT: 100.0
+  NUM_WORKERS: 4
 DATASETS:
   CROSS_DATASET: True
-  TRAIN: ("destroyed_building_trainval_tif",)
-  TRAIN_LABEL: ("destroyed_building_trainval_tif",)
-  TRAIN_UNLABEL: ("destroyed_building_trainval_tif",)
-  TEST: ("destroyed_building_test_tif",)
+  TRAIN: ("aerial_trainval_tif",)
+  TRAIN_LABEL: ("aerial_trainval_tif",)
+  TRAIN_UNLABEL: ("voc_destroy_trainval",)
+  TEST: ("satellite_test_tif", "aerial_test_tif")
 SEMISUPNET:
   Trainer: "DomainTeacherTrainer"
-  BBOX_THRESHOLD: 0.7
+  BBOX_THRESHOLD: 0.5
   TEACHER_UPDATE_ITER: 1
-  BURN_UP_STEP: 20000
+  BURN_UP_STEP: 180000
   EMA_KEEP_RATE: 0.999
   UNSUP_LOSS_WEIGHT: 2.0
 TEST:
-  EVAL_PERIOD: 3000
-  EVALUATOR: "COCOeval"
+  EVAL_PERIOD: 500
+  EVALUATOR: "coco"

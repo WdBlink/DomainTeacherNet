@@ -9,6 +9,8 @@ import detectron2.data.detection_utils as utils
 import detectron2.data.transforms as T
 from detectron2.data.dataset_mapper import DatasetMapper
 from ubteacher.data.detection_utils import build_strong_augmentation
+import torchvision.transforms as trans
+import torchvision.transforms.functional as F
 
 
 class DatasetMapperTwoCropSeparate(DatasetMapper):

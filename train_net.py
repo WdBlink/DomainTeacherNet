@@ -21,8 +21,8 @@ from ubteacher.modeling.meta_arch.ts_ensemble import EnsembleTSModel
 import os
 from options.train_options import TrainOptions
 
-os.environ["DETECTRON2_DATASETS"] = "/mnt/e/Dataset/"
-print(os.getenv("DETECTRON2_DATASETS"))
+# os.environ["DETECTRON2_DATASETS"] = "/mnt/c/Dataset/"
+# print(os.getenv("DETECTRON2_DATASETS"))
 
 
 def setup(args):
@@ -40,12 +40,25 @@ def setup(args):
 
 def main(args):
     cfg = setup(args)
-    register_pascal_voc("destroyed_building_trainval_tif", "/mnt/e/Dataset/taining_data_2021-08-19", "trainval", year=2014,
-                        class_names='1')
-    register_pascal_voc("destroyed_building_test_tif", "/mnt/e/Dataset/taining_data_2021-08-19", "test", year=2014,
-                        class_names='1')
+    register_pascal_voc("destroyed_building_trainval_tif", "/mnt/c/Dataset/taining_data_2021-08-19", "trainval", year=2012,
+                        class_names=['1'])
+    register_pascal_voc("destroyed_building_test_tif", "/mnt/c/Dataset/taining_data_2021-08-19", "test", year=2012,
+                        class_names=['1'])
+    register_pascal_voc("aerial_trainval_tif", "/mnt/e/Dataset/aerial_0415", "trainval",
+                        year=2012,
+                        class_names=['1'])
+    register_pascal_voc("aerial_test_tif", "/mnt/e/Dataset/aerial_0415", "test", year=2012,
+                        class_names=['1'])
+    register_pascal_voc("satellite_trainval_tif", "/mnt/e/Dataset/satellite_0506", "trainval",
+                        year=2012,
+                        class_names=['1'])
+    register_pascal_voc("satellite_test_tif", "/mnt/e/Dataset/satellite_0506", "test", year=2012,
+                        class_names=['1'])
     MetadataCatalog.get("destroyed_building_test_tif").set(thing_classes=["1"],  # 可以选择开启，但是不能显示中文，这里需要注意，中文的话最好关闭
                                            evaluator_type='coco')
+    MetadataCatalog.get("satellite_trainval_tif").set(thing_classes=["1"], evaluator_type='coco')
+    MetadataCatalog.get("satellite_test_tif").set(thing_classes=["1"], evaluator_type='coco')
+    MetadataCatalog.get("aerial_test_tif").set(thing_classes=["1"], evaluator_type='coco')
 
     if cfg.SEMISUPNET.Trainer == "ubteacher":
         Trainer = UBTeacherTrainer

@@ -15,6 +15,7 @@ def add_ubteacher_config(cfg):
 
     _C.SOLVER.IMG_PER_BATCH_LABEL = 1
     _C.SOLVER.IMG_PER_BATCH_UNLABEL = 1
+    _C.SOLVER.PESUDO_LABEL_PER_BATCH = 50
     _C.SOLVER.FACTOR_LIST = (1,)
 
     _C.DATASETS.TRAIN_LABEL = ("coco_2017_train",)
